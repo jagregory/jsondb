@@ -9,8 +9,9 @@ import (
 )
 
 type JsonDb interface {
-	// Create a new entry and write it to the database.
-	Create(entry Entry) error
+	// Create a new entry and write it to the database. Returns
+	// the newly assigned id or an error.
+	Create(entry Entry) (string, error)
 
 	// Delete an existing entry. Will return NotFoundError if the
 	// record isn't in the database.
@@ -25,9 +26,7 @@ type JsonDb interface {
 	// record isn't in the database.
 	Update(id string, entry Entry) error
 
-	// Creates a Scanner for iterating all the entries
-	// in a database.
-	NewScanner() (Scanner, error)
+	ids() ([]string, error)
 }
 
 // func for generating a new identifier. Use your uuid
@@ -85,21 +84,21 @@ func (db *jsondatabase) Read(id string, entry Entry) error {
 	return nil
 }
 
-func (db *jsondatabase) Create(entry Entry) error {
+func (db *jsondatabase) Create(entry Entry) (string, error) {
 	id := db.newid()
 	entry.AssignId(id)
 	entry.Created(time.Now())
 
 	b, err := json.Marshal(entry)
 	if err != nil {
-		return err
+		return id, err
 	}
 
 	if err := ioutil.WriteFile(db.path(id), b, 0644); err != nil {
-		return err
+		return id, err
 	}
 
-	return nil
+	return id, nil
 }
 
 func (db *jsondatabase) Delete(id string) error {
@@ -137,13 +136,17 @@ func (db *jsondatabase) Update(id string, entry Entry) error {
 	return ioutil.WriteFile(path.Join(db.dir, id), b, 0644)
 }
 
-func (db *jsondatabase) NewScanner() (Scanner, error) {
+func (db *jsondatabase) ids() ([]string, error) {
 	files, err := ioutil.ReadDir(db.dir)
 	if err != nil {
 		return nil, err
 	}
 
-	return &scanner{db, files, -1, len(files)}, nil
+	ids := make([]string, len(files))
+	for i, f := range files {
+		ids[i] = f.Name()
+	}
+	return ids, nil
 }
 
 type jsondatabase struct {
