@@ -8,20 +8,42 @@ import (
 	"time"
 )
 
+type JsonDb interface {
+	// Create a new entry and write it to the database.
+	Create(entry Entry) error
+
+	// Delete an existing entry. Will return NotFoundError if the
+	// record isn't in the database.
+	Delete(id string) error
+
+	// Read an entry from the database. Returns a NotFoundError
+	// if an entry with the supplied id can't be found. Will
+	// also return any serialisation errors if they occur.
+	Read(id string, entry Entry) error
+
+	// Update an existing entry. Will return NotFoundError if the
+	// record isn't in the database.
+	Update(id string, entry Entry) error
+
+	// Creates a Scanner for iterating all the entries
+	// in a database.
+	NewScanner() (Scanner, error)
+}
+
 // func for generating a new identifier. Use your uuid
 // of choice
 type IdGenerator func() string
 
 // Create a new database client pointed at a directory. Will
 // create the directory if it doesn't exist.
-func New(dir string, newid IdGenerator) *Db {
+func New(dir string, newid IdGenerator) JsonDb {
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		if err := os.Mkdir(dir, 0755); err != nil {
 			panic("Unable to create directory " + dir)
 		}
 	}
 
-	return &Db{dir, newid}
+	return &jsondatabase{dir, newid}
 }
 
 // A database entry representation needs to implement
@@ -38,10 +60,7 @@ type Entry interface {
 	Modified(at time.Time)
 }
 
-// Read an entry from the database. Returns a NotFoundError
-// if an entry with the supplied id can't be found. Will
-// also return any serialisation errors if they occur.
-func (db *Db) Read(id string, entry Entry) error {
+func (db *jsondatabase) Read(id string, entry Entry) error {
 	outputPath := db.path(id)
 
 	if _, err := os.Stat(outputPath); err != nil {
@@ -66,8 +85,7 @@ func (db *Db) Read(id string, entry Entry) error {
 	return nil
 }
 
-// Create a new entry and write it to the database.
-func (db *Db) Create(entry Entry) error {
+func (db *jsondatabase) Create(entry Entry) error {
 	id := db.newid()
 	entry.AssignId(id)
 	entry.Created(time.Now())
@@ -84,9 +102,7 @@ func (db *Db) Create(entry Entry) error {
 	return nil
 }
 
-// Delete an existing entry. Will return NotFoundError if the
-// record isn't in the database.
-func (db *Db) Delete(id string) error {
+func (db *jsondatabase) Delete(id string) error {
 	outputPath := db.path(id)
 
 	if _, err := os.Stat(outputPath); err != nil {
@@ -100,9 +116,7 @@ func (db *Db) Delete(id string) error {
 	return os.Remove(outputPath)
 }
 
-// Update an existing entry. Will return NotFoundError if the
-// record isn't in the database.
-func (db *Db) Update(id string, entry Entry) error {
+func (db *jsondatabase) Update(id string, entry Entry) error {
 	outputPath := db.path(id)
 
 	if _, err := os.Stat(outputPath); err != nil {
@@ -123,11 +137,20 @@ func (db *Db) Update(id string, entry Entry) error {
 	return ioutil.WriteFile(path.Join(db.dir, id), b, 0644)
 }
 
-type Db struct {
+func (db *jsondatabase) NewScanner() (Scanner, error) {
+	files, err := ioutil.ReadDir(db.dir)
+	if err != nil {
+		return nil, err
+	}
+
+	return &scanner{db, files, -1, len(files)}, nil
+}
+
+type jsondatabase struct {
 	dir   string
 	newid IdGenerator
 }
 
-func (db *Db) path(id string) string {
+func (db *jsondatabase) path(id string) string {
 	return path.Join(db.dir, id)
 }
