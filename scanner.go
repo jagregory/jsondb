@@ -21,7 +21,7 @@ func NewScanner(db JsonDb) (Scanner, error) {
 		return nil, err
 	}
 
-	return &scanner{db, ids, 0, len(ids)}, nil
+	return &scanner{db, ids, -1, len(ids)}, nil
 }
 
 type scanner struct {
